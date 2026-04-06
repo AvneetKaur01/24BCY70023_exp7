@@ -1,78 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import ProductCard from './components/ProductCard';
-import './App.css';
+import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
+import { selectCartCount } from './store/cartSlice';
+import ProductList from './components/ProductList';
+import CartView from './components/CartView';
+import {
+  AppBar, Toolbar, Typography, Badge, IconButton, Container, Tabs, Tab, Box
+} from '@mui/material';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import StoreIcon from '@mui/icons-material/Store';
 
-function App() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+const PRODUCTS = [
+  { id: 1, name: 'Smartphone', price: 299.99, category: 'Electronics', description: 'Latest model with 5G', emoji: '📱' },
+  { id: 2, name: 'Tablet', price: 449.99, category: 'Electronics', description: '10-inch display, 128GB', emoji: '📟' },
+  { id: 3, name: 'Smartwatch', price: 199.99, category: 'Wearables', description: 'Health tracking & GPS', emoji: '⌚' },
+  { id: 4, name: 'Laptop', price: 899.99, category: 'Computers', description: '16GB RAM, 512GB SSD', emoji: '💻' },
+  { id: 5, name: 'Wireless Earbuds', price: 129.99, category: 'Audio', description: 'Noise cancellation', emoji: '🎧' },
+  { id: 6, name: 'Keyboard', price: 79.99, category: 'Peripherals', description: 'Mechanical RGB keyboard', emoji: '⌨️' },
+];
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await axios.get('/api/products');
-      setProducts(response.data.data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch products. Is the backend running?');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProducts();
-    return () => {}; // cleanup
-  }, []);
+export default function App() {
+  const [tab, setTab] = useState(0);
+  const cartCount = useSelector(selectCartCount);
 
   return (
-    <div className="min-vh-100 bg-light">
-      <nav className="navbar navbar-dark bg-dark mb-4">
-        <div className="container">
-          <span className="navbar-brand fw-bold fs-4">🛍️ Product Store</span>
-          <span className="text-white-50">Experiment 2.3.1 — React + Axios + Express</span>
-        </div>
-      </nav>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+      <AppBar position="sticky">
+        <Toolbar>
+          <StoreIcon sx={{ mr: 1 }} />
+          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+            Redux Shopping Cart
+          </Typography>
+          <Typography variant="caption" sx={{ mr: 2, opacity: 0.8 }}>
+            Experiment 2.3.2
+          </Typography>
+          <IconButton color="inherit" onClick={() => setTab(1)}>
+            <Badge badgeContent={cartCount} color="error">
+              <ShoppingCartIcon />
+            </Badge>
+          </IconButton>
+        </Toolbar>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="secondary">
+          <Tab label="🛍️ Products" />
+          <Tab label={`🛒 Cart (${cartCount})`} />
+        </Tabs>
+      </AppBar>
 
-      <div className="container">
-        {loading && (
-          <div className="text-center py-5">
-            <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}>
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p className="mt-3 text-muted">Fetching products from API...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="alert alert-danger alert-dismissible" role="alert">
-            <strong>Error:</strong> {error}
-            <button type="button" className="btn-close" onClick={() => setError(null)} />
-            <div className="mt-2">
-              <button className="btn btn-outline-danger btn-sm" onClick={fetchProducts}>Retry</button>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && (
-          <>
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <h2 className="fw-bold mb-0">Products <span className="badge bg-secondary">{products.length}</span></h2>
-              <button className="btn btn-outline-primary" onClick={fetchProducts}>🔄 Refresh</button>
-            </div>
-            <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 pb-5">
-              {products.map(product => (
-                <div className="col" key={product._id}>
-                  <ProductCard product={product} onDelete={fetchProducts} />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {tab === 0 && <ProductList products={PRODUCTS} />}
+        {tab === 1 && <CartView />}
+      </Container>
+    </Box>
   );
 }
-
-export default App;
