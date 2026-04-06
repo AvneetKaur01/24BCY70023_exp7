@@ -1,78 +1,88 @@
 const express = require('express');
-const mongoose = require('mongoose');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection (update URI as needed)
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/productsdb')
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB error:', err));
-
-// Product Schema
-const productSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  description: String,
-  category: String,
-  image: String,
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+  },
 });
 
-const Product = mongoose.model('Product', productSchema);
+// Track online users: { socketId -> username }
+const onlineUsers = new Map();
 
-// Seed data
-const seedProducts = [
-  { name: 'Wireless Headphones', price: 59.99, description: 'Premium sound quality', category: 'Electronics', image: 'https://via.placeholder.com/200' },
-  { name: 'Running Shoes', price: 89.99, description: 'Lightweight and comfortable', category: 'Sports', image: 'https://via.placeholder.com/200' },
-  { name: 'Coffee Maker', price: 49.99, description: 'Brew perfect coffee every time', category: 'Kitchen', image: 'https://via.placeholder.com/200' },
-  { name: 'Yoga Mat', price: 29.99, description: 'Non-slip premium yoga mat', category: 'Sports', image: 'https://via.placeholder.com/200' },
-  { name: 'Desk Lamp', price: 39.99, description: 'LED adjustable desk lamp', category: 'Home', image: 'https://via.placeholder.com/200' },
-  { name: 'Bluetooth Speaker', price: 79.99, description: 'Waterproof portable speaker', category: 'Electronics', image: 'https://via.placeholder.com/200' },
-];
+// REST health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', onlineUsers: onlineUsers.size });
+});
 
-// Routes
-app.get('/api/products', async (req, res) => {
-  try {
-    let products = await Product.find();
-    if (products.length === 0) {
-      products = await Product.insertMany(seedProducts);
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+
+  // User joins chat
+  socket.on('user:join', (username) => {
+    onlineUsers.set(socket.id, username);
+    console.log(`${username} joined`);
+
+    // Broadcast join notification to all others
+    socket.broadcast.emit('message:system', {
+      text: `${username} joined the chat`,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Send updated user list to everyone
+    io.emit('users:update', Array.from(onlineUsers.values()));
+  });
+
+  // Handle new message
+  socket.on('message:send', (data) => {
+    const username = onlineUsers.get(socket.id) || 'Anonymous';
+    const message = {
+      id: Date.now(),
+      username,
+      text: data.text,
+      timestamp: new Date().toISOString(),
+    };
+    // Broadcast to everyone including sender
+    io.emit('message:receive', message);
+  });
+
+  // Typing indicator
+  socket.on('typing:start', () => {
+    const username = onlineUsers.get(socket.id);
+    if (username) {
+      socket.broadcast.emit('typing:update', { username, isTyping: true });
     }
-    res.json({ success: true, data: products });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  });
+
+  socket.on('typing:stop', () => {
+    const username = onlineUsers.get(socket.id);
+    if (username) {
+      socket.broadcast.emit('typing:update', { username, isTyping: false });
+    }
+  });
+
+  // Handle disconnect
+  socket.on('disconnect', () => {
+    const username = onlineUsers.get(socket.id);
+    if (username) {
+      onlineUsers.delete(socket.id);
+      io.emit('message:system', {
+        text: `${username} left the chat`,
+        timestamp: new Date().toISOString(),
+      });
+      io.emit('users:update', Array.from(onlineUsers.values()));
+      console.log(`${username} disconnected`);
+    }
+  });
 });
 
-app.get('/api/products/:id', async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
-    res.json({ success: true, data: product });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.post('/api/products', async (req, res) => {
-  try {
-    const product = new Product(req.body);
-    await product.save();
-    res.status(201).json({ success: true, data: product });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-app.delete('/api/products/:id', async (req, res) => {
-  try {
-    await Product.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Product deleted' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 5001;
+server.listen(PORT, () => console.log(`Socket.IO server running on port ${PORT}`));
